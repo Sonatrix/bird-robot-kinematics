@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bird Robot - Kinematics Explorer</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>Bird Robot <span>Kinematics Explorer</span></h1>
+    <nav id="parts" aria-label="Robot parts"></nav>
+    <div class="tools">
+      <button id="t-frames" class="toggle" aria-pressed="false" title="Show the coordinate frame attached to every joint">Frames</button>
+      <button id="t-reach" class="toggle" aria-pressed="false" title="Show the reachable circle of the selected chain">Reach</button>
+      <button id="t-trail" class="toggle" aria-pressed="true" title="Trace the tip of the selected chain">Trail</button>
+      <button id="t-anim" class="toggle" aria-pressed="false" title="Animate every part">Animate all</button>
+      <button id="t-reset" title="Reset every joint">Reset</button>
+      <button id="t-tour" class="primary">Guided tour</button>
+    </div>
+  </header>
+
+  <main>
+    <section id="stage-wrap">
+      <canvas id="stage" aria-label="Interactive bird robot"></canvas>
+      <div id="hint">Click a part &middot; drag a <b>white ring</b> to move its tip (inverse kinematics) &middot; drag a <b>joint dot</b> to rotate it (forward kinematics) &middot; drag the body to move it</div>
+      <div id="tour" hidden>
+        <div class="tour-step" id="tour-count"></div>
+        <h3 id="tour-title"></h3>
+        <p id="tour-text"></p>
+        <div class="tour-btns">
+          <button id="tour-prev">Back</button>
+          <button id="tour-next" class="primary">Next</button>
+          <button id="tour-exit">Exit tour</button>
+        </div>
+      </div>
+    </section>
+
+    <aside id="panel">
+      <div id="part-head"><span id="chip"></span><h2 id="part-title"></h2></div>
+      <div id="part-desc"></div>
+      <div id="part-facts"></div>
+
+      <div id="sel-only">
+        <h3>Joint controls</h3>
+        <div id="controls"></div>
+        <div class="btnrow">
+          <button id="btn-demo">Demo motion</button>
+          <button id="btn-reset-part">Reset part</button>
+        </div>
+        <h3>Forward kinematics <small>live</small></h3>
+        <div id="fk"></div>
+        <h3>Jacobian &amp; singularities <small>live</small></h3>
+        <div id="jac"></div>
+      </div>
+    </aside>
+  </main>
+
+  <script src="js/bird.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
