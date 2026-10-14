@@ -1,0 +1,1075 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2D Robot Kinematics & Rigid Transformation Simulator</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- MathJax for TeX rendering -->
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Fira+Code:wght@400;500;600&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        .code-font { font-family: 'Fira Code', monospace; }
+        canvas { touch-action: none; }
+        .tab-btn.active {
+            background-color: rgba(59, 130, 246, 0.2);
+            border-color: rgba(59, 130, 246, 0.5);
+            color: #60a5fa;
+        }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col antialiased selection:bg-blue-500 selection:text-white">
+
+    <!-- Top Navigation / Header -->
+    <header class="bg-slate-900/90 backdrop-blur border-b border-slate-800 sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-4">
+            <div class="flex items-center space-x-3">
+                <div class="p-2.5 bg-blue-600/20 text-blue-400 rounded-xl border border-blue-500/30 shadow-inner">
+                    <i data-lucide="bot" class="w-6 h-6"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-lg text-white leading-tight flex items-center gap-2">
+                        2D Robot Transformation & Kinematics Simulator
+                    </h1>
+                    <p class="text-xs text-slate-400">Interactive $SE(2)$ Rigid Body Transformations & Differential Drive Kinematics</p>
+                </div>
+            </div>
+            
+            <!-- Quick Action & Sequence Execution Controls -->
+            <div class="flex items-center gap-2 flex-wrap">
+                <button id="btn-rotate-only" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-blue-400 text-xs font-semibold rounded-lg border border-blue-500/30 transition-all flex items-center gap-1.5">
+                    <i data-lucide="rotate-cw" class="w-3.5 h-3.5"></i> 1. Rotate ($R$)
+                </button>
+                <button id="btn-translate-only" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-amber-400 text-xs font-semibold rounded-lg border border-amber-500/30 transition-all flex items-center gap-1.5">
+                    <i data-lucide="move" class="w-3.5 h-3.5"></i> 2. Translate ($\mathbf{t}$)
+                </button>
+                <button id="btn-animate" class="px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-lg transition-all shadow-lg shadow-blue-900/30 flex items-center gap-1.5">
+                    <i data-lucide="play" class="w-3.5 h-3.5" id="play-icon"></i> <span id="play-text">Play Full Sequence</span>
+                </button>
+                <button id="btn-reset" class="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg border border-slate-700 transition-colors" title="Reset Simulation">
+                    <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="flex-1 max-w-7xl w-full mx-auto p-4 grid grid-cols-1 lg:grid-cols-12 gap-5">
+
+        <!-- Left Column: Interactive Simulation Canvas -->
+        <section class="lg:col-span-7 flex flex-col gap-4">
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-2xl flex-1 flex flex-col relative overflow-hidden">
+                
+                <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+                    <div class="flex items-center gap-2">
+                        <span class="inline-block w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse"></span>
+                        <span class="text-xs font-bold uppercase tracking-wider text-slate-300">Transformation Plane</span>
+                    </div>
+
+                    <!-- Mode Toggle Selector -->
+                    <div class="flex bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs gap-1">
+                        <button id="mode-rigid" class="tab-btn active px-3 py-1 rounded-lg border border-transparent font-medium transition-all flex items-center gap-1.5">
+                            <i data-lucide="grid" class="w-3.5 h-3.5"></i> Rigid Body SE(2)
+                        </button>
+                        <button id="mode-unicycle" class="tab-btn px-3 py-1 rounded-lg border border-transparent font-medium transition-all flex items-center gap-1.5 text-slate-400 hover:text-slate-200">
+                            <i data-lucide="compass" class="w-3.5 h-3.5"></i> Differential Drive
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Simulation Canvas Wrapper -->
+                <div class="relative flex-1 w-full bg-slate-950 rounded-xl border border-slate-800/80 overflow-hidden min-h-[480px] sm:min-h-[520px]" id="canvas-container">
+                    <canvas id="simCanvas" class="w-full h-full cursor-grab active:cursor-grabbing"></canvas>
+                    <div id="drag-hint" class="absolute top-3 left-3 bg-slate-900/80 backdrop-blur px-2.5 py-1 rounded-md border border-slate-800 text-[11px] text-slate-400 pointer-events-none flex items-center gap-1.5">
+                        <i data-lucide="mouse-pointer-click" class="w-3.5 h-3.5 text-amber-400"></i> Drag Frame B on canvas to reposition
+                    </div>
+                </div>
+
+                <!-- Dynamic HUD Bar -->
+                <div class="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                    <div class="bg-slate-950/80 border border-slate-800 p-2 rounded-xl text-center">
+                        <span class="text-slate-400 block text-[10px]">Target Position $(t_x, t_y)$</span>
+                        <span id="hud-pos" class="code-font font-bold text-amber-400">(4.0, 3.0)</span>
+                    </div>
+                    <div class="bg-slate-950/80 border border-slate-800 p-2 rounded-xl text-center">
+                        <span class="text-slate-400 block text-[10px]">Rotation Angle $\theta$</span>
+                        <span id="hud-theta" class="code-font font-bold text-blue-400">45.0°</span>
+                    </div>
+                    <div class="bg-slate-950/80 border border-slate-800 p-2 rounded-xl text-center">
+                        <span class="text-slate-400 block text-[10px]">Translation $\|\mathbf{t}\|$</span>
+                        <span id="hud-dist" class="code-font font-bold text-emerald-400">5.00 u</span>
+                    </div>
+                    <div class="bg-slate-950/80 border border-slate-800 p-2 rounded-xl text-center">
+                        <span class="text-slate-400 block text-[10px]">Wheel Speeds $(v_L, v_R)$</span>
+                        <span id="hud-wheels" class="code-font font-bold text-cyan-400">1.25 / 1.75</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Right Column: Control Panels & Kinematic Mathematics -->
+        <section class="lg:col-span-5 flex flex-col gap-4">
+
+            <!-- Controls Panel -->
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-2xl space-y-4">
+                <div class="flex justify-between items-center border-b border-slate-800 pb-2">
+                    <h2 class="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
+                        <i data-lucide="sliders-horizontal" class="w-4 h-4 text-blue-400"></i> Parameters & Kinematics
+                    </h2>
+                    <span id="active-mode-badge" class="text-[10px] bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded-md border border-blue-500/30 font-semibold">Rigid Body SE(2)</span>
+                </div>
+
+                <!-- Rigid Body Transformation SE(2) Controls -->
+                <div id="controls-rigid" class="space-y-3">
+                    <!-- Heading Angle Theta -->
+                    <div>
+                        <div class="flex justify-between items-center mb-1">
+                            <label class="text-xs font-medium text-slate-200 flex items-center gap-1.5">
+                                <span class="w-2.5 h-2.5 rounded-full bg-blue-500"></span>
+                                Heading Angle ($\theta$)
+                            </label>
+                            <div class="flex items-center gap-1">
+                                <input type="number" id="num-theta" min="-180" max="180" value="45" step="1"
+                                    class="w-16 bg-slate-950 border border-slate-800 rounded-lg px-2 py-0.5 text-right text-xs code-font text-blue-400 font-semibold focus:outline-none focus:border-blue-500">
+                                <span class="text-xs text-slate-400">°</span>
+                            </div>
+                        </div>
+                        <input type="range" id="slider-theta" min="-180" max="180" value="45" step="1"
+                            class="w-full accent-blue-500 h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer">
+                    </div>
+
+                    <!-- Translation Tx -->
+                    <div>
+                        <div class="flex justify-between items-center mb-1">
+                            <label class="text-xs font-medium text-slate-200 flex items-center gap-1.5">
+                                <span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+                                Translation Vector $t_x$
+                            </label>
+                            <input type="number" id="num-tx" min="-1" max="5" value="4.0" step="0.1"
+                                class="w-16 bg-slate-950 border border-slate-800 rounded-lg px-2 py-0.5 text-right text-xs code-font text-amber-400 font-semibold focus:outline-none focus:border-amber-500">
+                        </div>
+                        <input type="range" id="slider-tx" min="-1" max="5" value="4.0" step="0.1"
+                            class="w-full accent-amber-500 h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer">
+                    </div>
+
+                    <!-- Translation Ty -->
+                    <div>
+                        <div class="flex justify-between items-center mb-1">
+                            <label class="text-xs font-medium text-slate-200 flex items-center gap-1.5">
+                                <span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+                                Translation Vector $t_y$
+                            </label>
+                            <input type="number" id="num-ty" min="-1" max="5" value="3.0" step="0.1"
+                                class="w-16 bg-slate-950 border border-slate-800 rounded-lg px-2 py-0.5 text-right text-xs code-font text-amber-400 font-semibold focus:outline-none focus:border-amber-500">
+                        </div>
+                        <input type="range" id="slider-ty" min="-1" max="5" value="3.0" step="0.1"
+                            class="w-full accent-amber-500 h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer">
+                    </div>
+                </div>
+
+                <!-- Differential Kinematics Controls -->
+                <div id="controls-unicycle" class="space-y-3 hidden">
+                    <!-- Linear Velocity v -->
+                    <div>
+                        <div class="flex justify-between items-center mb-1">
+                            <label class="text-xs font-medium text-slate-200 flex items-center gap-1.5">
+                                <i data-lucide="move-right" class="w-3.5 h-3.5 text-emerald-400"></i>
+                                Linear Velocity ($v$)
+                            </label>
+                            <span id="label-v" class="text-xs code-font text-emerald-400 font-semibold">1.50 u/s</span>
+                        </div>
+                        <input type="range" id="slider-v" min="-2.0" max="3.0" value="1.5" step="0.1"
+                            class="w-full accent-emerald-500 h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer">
+                    </div>
+
+                    <!-- Angular Velocity omega -->
+                    <div>
+                        <div class="flex justify-between items-center mb-1">
+                            <label class="text-xs font-medium text-slate-200 flex items-center gap-1.5">
+                                <i data-lucide="rotate-cw" class="w-3.5 h-3.5 text-purple-400"></i>
+                                Angular Velocity ($\omega$)
+                            </label>
+                            <span id="label-omega" class="text-xs code-font text-purple-400 font-semibold">0.50 rad/s</span>
+                        </div>
+                        <input type="range" id="slider-omega" min="-2.0" max="2.0" value="0.5" step="0.05"
+                            class="w-full accent-purple-500 h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer">
+                    </div>
+
+                    <!-- Robot Wheelbase (L) & Wheel Radius (r) -->
+                    <div class="grid grid-cols-2 gap-3 pt-1">
+                        <div>
+                            <label class="text-[11px] font-medium text-slate-300 block mb-1">Wheel Radius ($r$)</label>
+                            <input type="number" id="num-radius" min="0.05" max="0.5" value="0.15" step="0.01"
+                                class="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-1 text-xs code-font text-cyan-400 font-semibold focus:outline-none focus:border-cyan-500">
+                        </div>
+                        <div>
+                            <label class="text-[11px] font-medium text-slate-300 block mb-1">Wheelbase ($L$)</label>
+                            <input type="number" id="num-wheelbase" min="0.2" max="1.5" value="0.50" step="0.05"
+                                class="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-1 text-xs code-font text-cyan-400 font-semibold focus:outline-none focus:border-cyan-500">
+                        </div>
+                    </div>
+
+                    <!-- Continuous Kinematic Drive Button -->
+                    <div class="pt-1">
+                        <button id="btn-drive" class="w-full py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl transition-all shadow-lg shadow-emerald-900/30 flex items-center justify-center gap-2">
+                            <i data-lucide="play" class="w-4 h-4"></i> Run Continuous Forward Kinematics
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Visibility Toggles Grid -->
+                <div class="pt-3 border-t border-slate-800 grid grid-cols-2 gap-2 text-xs text-slate-300">
+                    <label class="flex items-center gap-2 cursor-pointer hover:text-white">
+                        <input type="checkbox" id="toggle-angle-arcs" checked class="rounded border-slate-700 bg-slate-950 text-blue-500 accent-blue-500">
+                        Angle Arcs ($\theta$)
+                    </label>
+                    <label class="flex items-center gap-2 cursor-pointer hover:text-white">
+                        <input type="checkbox" id="toggle-bracket" checked class="rounded border-slate-700 bg-slate-950 text-blue-500 accent-blue-500">
+                        Distance Bracket
+                    </label>
+                    <label class="flex items-center gap-2 cursor-pointer hover:text-white">
+                        <input type="checkbox" id="toggle-vectors" checked class="rounded border-slate-700 bg-slate-950 text-blue-500 accent-blue-500">
+                        Vectors & Arc Path
+                    </label>
+                    <label class="flex items-center gap-2 cursor-pointer hover:text-white">
+                        <input type="checkbox" id="toggle-callouts" checked class="rounded border-slate-700 bg-slate-950 text-blue-500 accent-blue-500">
+                        Diagram Callouts
+                    </label>
+                    <label class="flex items-center gap-2 cursor-pointer hover:text-white">
+                        <input type="checkbox" id="toggle-frames" checked class="rounded border-slate-700 bg-slate-950 text-blue-500 accent-blue-500">
+                        Coordinate Frames
+                    </label>
+                    <label class="flex items-center gap-2 cursor-pointer hover:text-white">
+                        <input type="checkbox" id="toggle-matrix" checked class="rounded border-slate-700 bg-slate-950 text-blue-500 accent-blue-500">
+                        Matrix Panel
+                    </label>
+                </div>
+            </div>
+
+            <!-- Mathematical Model & Matrix Panels -->
+            <div id="math-panel-wrapper" class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-2xl flex-1 flex flex-col gap-3">
+                <h2 class="text-xs font-bold uppercase tracking-wider text-slate-400 border-b border-slate-800 pb-2 flex items-center justify-between">
+                    <span class="flex items-center gap-2">
+                        <i data-lucide="binary" class="w-4 h-4 text-emerald-400"></i> Mathematical Representation
+                    </span>
+                    <span class="text-[10px] text-slate-500 code-font">Homogeneous SE(2)</span>
+                </h2>
+
+                <!-- Differential Kinematics Formula Container -->
+                <div id="kinematics-eqs-container" class="bg-slate-950 p-3 rounded-xl border border-slate-800 text-xs space-y-1.5 hidden">
+                    <div class="text-[11px] text-slate-400 font-semibold flex items-center justify-between">
+                        <span>Differential Forward Kinematics</span>
+                        <span class="text-[10px] text-emerald-400 code-font">Unicycle Model</span>
+                    </div>
+                    <div class="text-center py-1.5 text-slate-200 code-font text-xs bg-slate-900/60 rounded-lg border border-slate-800 overflow-x-auto" id="diff-eqs">
+                        $$\begin{bmatrix} \dot{x} \\ \dot{y} \\ \dot{\theta} \end{bmatrix} = \begin{bmatrix} \cos\theta & 0 \\ \sin\theta & 0 \\ 0 & 1 \end{bmatrix} \begin{bmatrix} v \\ \omega \end{bmatrix}, \quad \begin{bmatrix} v_L \\ v_R \end{bmatrix} = \begin{bmatrix} v - \frac{\omega L}{2} \\ v + \frac{\omega L}{2} \end{bmatrix}$$
+                    </div>
+                </div>
+
+                <!-- Matrix Box -->
+                <div class="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2 flex-1 flex flex-col justify-center">
+                    <div class="text-xs text-slate-400 font-medium flex items-center justify-between">
+                        <span>$SE(2)$ Homogeneous Transformation Matrix</span>
+                        <span class="text-[10px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded-md font-mono">3x3 Matrix</span>
+                    </div>
+
+                    <div class="overflow-x-auto py-1 text-center text-xs" id="matrix-container">
+                        <div id="matrix-latex">
+                            $$\mathbf{T}_A^B = \begin{bmatrix} \cos(45^\circ) & -\sin(45^\circ) & 4.0 \\ \sin(45^\circ) & \cos(45^\circ) & 3.0 \\ 0 & 0 & 1 \end{bmatrix}$$
+                        </div>
+                    </div>
+
+                    <div id="point-transform-latex" class="text-center text-[11px] text-slate-400 border-t border-slate-900 pt-2">
+                        $$\mathbf{p}_A = \mathbf{T}_A^B \cdot \mathbf{p}_B = \begin{bmatrix} 0.707 & -0.707 & 4.0 \\ 0.707 & 0.707 & 3.0 \\ 0 & 0 & 1 \end{bmatrix} \begin{bmatrix} 0 \\ 0 \\ 1 \end{bmatrix} = \begin{bmatrix} 4.0 \\ 3.0 \\ 1 \end{bmatrix}$$
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        // State Management
+        const state = {
+            mode: 'rigid', // 'rigid' | 'unicycle'
+            thetaDeg: 45,
+            tx: 4.0,
+            ty: 3.0,
+            v: 1.5,
+            omega: 0.5,
+            wheelRadius: 0.15,
+            wheelbase: 0.50,
+
+            // Toggles
+            showAngleArcs: true,
+            showBracket: true,
+            showVectors: true,
+            showCallouts: true,
+            showFrames: true,
+            showMatrix: true,
+
+            // Interactive Dragging
+            isDragging: false,
+            dragTarget: null,
+
+            // Animation Properties
+            animating: false,
+            animMode: 'full', // 'full' | 'step1' | 'step2'
+            animProgress: 1.0,
+            animStartTime: 0,
+            duration: 2200,
+
+            // Unicycle Path Integration
+            unicyclePose: { x: 0, y: 0, theta: 0 },
+            trail: []
+        };
+
+        // DOM Element Cache
+        const canvas = document.getElementById('simCanvas');
+        const ctx = canvas.getContext('2d');
+        const container = document.getElementById('canvas-container');
+
+        const sliderTheta = document.getElementById('slider-theta');
+        const numTheta = document.getElementById('num-theta');
+        const sliderTx = document.getElementById('slider-tx');
+        const numTx = document.getElementById('num-tx');
+        const sliderTy = document.getElementById('slider-ty');
+        const numTy = document.getElementById('num-ty');
+        const sliderV = document.getElementById('slider-v');
+        const sliderOmega = document.getElementById('slider-omega');
+        const numRadius = document.getElementById('num-radius');
+        const numWheelbase = document.getElementById('num-wheelbase');
+
+        const labelV = document.getElementById('label-v');
+        const labelOmega = document.getElementById('label-omega');
+
+        const toggleAngleArcs = document.getElementById('toggle-angle-arcs');
+        const toggleBracket = document.getElementById('toggle-bracket');
+        const toggleVectors = document.getElementById('toggle-vectors');
+        const toggleCallouts = document.getElementById('toggle-callouts');
+        const toggleFrames = document.getElementById('toggle-frames');
+        const toggleMatrix = document.getElementById('toggle-matrix');
+
+        const btnAnimate = document.getElementById('btn-animate');
+        const btnRotateOnly = document.getElementById('btn-rotate-only');
+        const btnTranslateOnly = document.getElementById('btn-translate-only');
+        const btnReset = document.getElementById('btn-reset');
+        const btnDrive = document.getElementById('btn-drive');
+
+        const modeRigidBtn = document.getElementById('mode-rigid');
+        const modeUnicycleBtn = document.getElementById('mode-unicycle');
+
+        const bounds = { minX: -1.2, maxX: 5.4, minY: -1.2, maxY: 5.4 };
+
+        // Canvas Responsive Resize
+        function resizeCanvas() {
+            const rect = container.getBoundingClientRect();
+            canvas.width = rect.width * window.devicePixelRatio;
+            canvas.height = rect.height * window.devicePixelRatio;
+            draw();
+        }
+        window.addEventListener('resize', resizeCanvas);
+
+        // Coordinate System Conversions
+        function worldToScreen(wx, wy) {
+            const width = canvas.width;
+            const height = canvas.height;
+            const padding = 45 * window.devicePixelRatio;
+
+            const sx = padding + ((wx - bounds.minX) / (bounds.maxX - bounds.minX)) * (width - 2 * padding);
+            const sy = height - (padding + ((wy - bounds.minY) / (bounds.maxY - bounds.minY)) * (height - 2 * padding));
+            return { x: sx, y: sy };
+        }
+
+        function screenToWorld(sx, sy) {
+            const width = canvas.width;
+            const height = canvas.height;
+            const padding = 45 * window.devicePixelRatio;
+
+            const wx = bounds.minX + ((sx - padding) / (width - 2 * padding)) * (bounds.maxX - bounds.minX);
+            const wy = bounds.minY + (((height - sy) - padding) / (height - 2 * padding)) * (bounds.maxX - bounds.minX);
+            return { x: wx, y: wy };
+        }
+
+        // Draw Robot Asset with Wheel Detail
+        function drawRobot(x, y, angleRad, colorTheme = 'blue', opacity = 1.0) {
+            const pos = worldToScreen(x, y);
+            const scale = (canvas.width / (bounds.maxX - bounds.minX)) * 0.085;
+
+            ctx.save();
+            ctx.translate(pos.x, pos.y);
+            ctx.rotate(-angleRad);
+            ctx.globalAlpha = opacity;
+
+            let fillCol = '#38bdf8';
+            let borderCol = '#0284c7';
+
+            if (colorTheme === 'amber') {
+                fillCol = '#f59e0b';
+                borderCol = '#d97706';
+            } else if (colorTheme === 'gray') {
+                fillCol = '#94a3b8';
+                borderCol = '#64748b';
+            } else if (colorTheme === 'emerald') {
+                fillCol = '#10b981';
+                borderCol = '#059669';
+            }
+
+            // Left & Right Wheels
+            ctx.fillStyle = '#1e293b';
+            ctx.fillRect(-scale * 0.7, -scale * 0.4, scale * 0.22, scale * 0.8);
+            ctx.fillRect(scale * 0.48, -scale * 0.4, scale * 0.22, scale * 0.8);
+
+            // Body Frame
+            ctx.fillStyle = fillCol;
+            ctx.strokeStyle = borderCol;
+            ctx.lineWidth = 2.5;
+            ctx.beginPath();
+            ctx.roundRect(-scale * 0.45, -scale * 0.45, scale * 0.9, scale * 0.9, scale * 0.2);
+            ctx.fill();
+            ctx.stroke();
+
+            // Eyes / Front Orientation Indicator
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.arc(-scale * 0.2, -scale * 0.2, scale * 0.1, 0, Math.PI * 2);
+            ctx.arc(scale * 0.2, -scale * 0.2, scale * 0.1, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.fillStyle = '#0f172a';
+            ctx.beginPath();
+            ctx.arc(-scale * 0.2, -scale * 0.2, scale * 0.04, 0, Math.PI * 2);
+            ctx.arc(scale * 0.2, -scale * 0.2, scale * 0.04, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Display Screen
+            ctx.fillStyle = '#0f172a';
+            ctx.fillRect(-scale * 0.22, scale * 0.05, scale * 0.44, scale * 0.25);
+
+            ctx.restore();
+        }
+
+        // Helper Arrow Drawer
+        function drawArrow(fromX, fromY, toX, toY, color = '#38bdf8', lineWidth = 2.5, headLen = 10) {
+            const p1 = worldToScreen(fromX, fromY);
+            const p2 = worldToScreen(toX, toY);
+
+            const dx = p2.x - p1.x;
+            const dy = p2.y - p1.y;
+            const angle = Math.atan2(dy, dx);
+
+            ctx.save();
+            ctx.strokeStyle = color;
+            ctx.fillStyle = color;
+            ctx.lineWidth = lineWidth;
+
+            ctx.beginPath();
+            ctx.moveTo(p1.x, p1.y);
+            ctx.lineTo(p2.x, p2.y);
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo(p2.x, p2.y);
+            ctx.lineTo(p2.x - headLen * Math.cos(angle - Math.PI / 6), p2.y - headLen * Math.sin(angle - Math.PI / 6));
+            ctx.lineTo(p2.x - headLen * Math.cos(angle + Math.PI / 6), p2.y - headLen * Math.sin(angle + Math.PI / 6));
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+        }
+
+        // Draw Coordinate Axes Frame
+        function drawAxesFrame(originX, originY, angleRad, xAxisLabel = 'X', yAxisLabel = 'Y', opacity = 1.0) {
+            if (!state.showFrames) return;
+
+            const len = 0.85;
+            const cos = Math.cos(angleRad);
+            const sin = Math.sin(angleRad);
+
+            drawArrow(originX, originY, originX + len * cos, originY + len * sin, `rgba(239, 68, 68, ${opacity})`, 2.5, 9);
+            drawArrow(originX, originY, originX - len * sin, originY + len * cos, `rgba(34, 197, 94, ${opacity})`, 2.5, 9);
+
+            ctx.save();
+            ctx.font = 'bold 12px Inter';
+            ctx.globalAlpha = opacity;
+
+            const pX = worldToScreen(originX + (len + 0.15) * cos, originY + (len + 0.15) * sin);
+            ctx.fillStyle = '#ef4444';
+            ctx.fillText(xAxisLabel, pX.x - 5, pX.y + 4);
+
+            const pY = worldToScreen(originX - (len + 0.15) * sin, originY + (len + 0.15) * cos);
+            ctx.fillStyle = '#22c55e';
+            ctx.fillText(yAxisLabel, pY.x - 5, pY.y + 4);
+
+            ctx.restore();
+        }
+
+        // Leader Callouts with Curved Arrows
+        function drawLeaderCallout(fromWorld, toWorld, text, alignRight = true, color = '#38bdf8') {
+            if (!state.showCallouts) return;
+
+            const p1 = worldToScreen(fromWorld.x, fromWorld.y);
+            const p2 = worldToScreen(toWorld.x, toWorld.y);
+
+            ctx.save();
+            ctx.strokeStyle = color;
+            ctx.fillStyle = color;
+            ctx.lineWidth = 1.5;
+
+            ctx.beginPath();
+            ctx.moveTo(p1.x, p1.y);
+            const midX = p1.x + (p2.x - p1.x) * 0.5;
+            const midY = p1.y - 15;
+            ctx.quadraticCurveTo(midX, midY, p2.x, p2.y);
+            ctx.stroke();
+
+            const angle = Math.atan2(p1.y - midY, p1.x - midX);
+            ctx.beginPath();
+            ctx.moveTo(p1.x, p1.y);
+            ctx.lineTo(p1.x + 6 * Math.cos(angle - 0.4), p1.y + 6 * Math.sin(angle - 0.4));
+            ctx.lineTo(p1.x + 6 * Math.cos(angle + 0.4), p1.y + 6 * Math.sin(angle + 0.4));
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.font = 'bold 12px Inter';
+            ctx.textAlign = alignRight ? 'left' : 'right';
+            ctx.fillText(text, p2.x + (alignRight ? 5 : -5), p2.y + 4);
+            ctx.restore();
+        }
+
+        // Euclidean Distance Bracket
+        function drawDistanceBracket(fromX, fromY, toX, toY, text) {
+            if (!state.showBracket) return;
+
+            const p1 = worldToScreen(fromX, fromY);
+            const p2 = worldToScreen(toX, toY);
+
+            const dx = p2.x - p1.x;
+            const dy = p2.y - p1.y;
+            const len = Math.sqrt(dx * dx + dy * dy);
+            if (len < 10) return;
+
+            const angle = Math.atan2(dy, dx);
+            const perpX = -Math.sin(angle);
+            const perpY = Math.cos(angle);
+            const offset = 22 * window.devicePixelRatio;
+
+            ctx.save();
+            ctx.translate((p1.x + p2.x) / 2 + perpX * offset, (p1.y + p2.y) / 2 + perpY * offset);
+            ctx.rotate(angle);
+
+            ctx.strokeStyle = '#f8fafc';
+            ctx.lineWidth = 1.5;
+            const halfW = len / 2 - 10;
+            const h = 8;
+
+            ctx.beginPath();
+            ctx.moveTo(-halfW, h);
+            ctx.quadraticCurveTo(-halfW, 0, -halfW + 10, 0);
+            ctx.lineTo(-10, 0);
+            ctx.quadraticCurveTo(0, 0, 0, -h);
+            ctx.quadraticCurveTo(0, 0, 10, 0);
+            ctx.lineTo(halfW - 10, 0);
+            ctx.quadraticCurveTo(halfW, 0, halfW, h);
+            ctx.stroke();
+
+            ctx.rotate(-angle);
+            ctx.fillStyle = '#ffffff';
+            ctx.font = '600 12px Fira Code';
+            ctx.textAlign = 'center';
+            ctx.fillText(text, 0, -h - 8);
+
+            ctx.restore();
+        }
+
+        // Background Grid
+        function drawGrid() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            ctx.save();
+            ctx.lineWidth = 1;
+
+            for (let x = Math.ceil(bounds.minX); x <= bounds.maxX; x++) {
+                const p1 = worldToScreen(x, bounds.minY);
+                ctx.strokeStyle = x === 0 ? '#475569' : '#1e293b';
+                ctx.lineWidth = x === 0 ? 2.5 : 1;
+
+                ctx.beginPath();
+                ctx.moveTo(p1.x, 0);
+                ctx.lineTo(p1.x, canvas.height);
+                ctx.stroke();
+
+                if (x >= -1 && x <= 5) {
+                    const pZero = worldToScreen(x, 0);
+                    ctx.fillStyle = '#94a3b8';
+                    ctx.font = '11px Fira Code';
+                    ctx.fillText(x.toString(), pZero.x - 4, pZero.y + 18);
+                }
+            }
+
+            for (let y = Math.ceil(bounds.minY); y <= bounds.maxY; y++) {
+                const p1 = worldToScreen(bounds.minX, y);
+                ctx.strokeStyle = y === 0 ? '#475569' : '#1e293b';
+                ctx.lineWidth = y === 0 ? 2.5 : 1;
+
+                ctx.beginPath();
+                ctx.moveTo(0, p1.y);
+                ctx.lineTo(canvas.width, p1.y);
+                ctx.stroke();
+
+                if (y >= -1 && y <= 5 && y !== 0) {
+                    const pZero = worldToScreen(0, y);
+                    ctx.fillStyle = '#94a3b8';
+                    ctx.font = '11px Fira Code';
+                    ctx.fillText(y.toString(), pZero.x - 18, pZero.y + 4);
+                }
+            }
+
+            drawArrow(bounds.minX, 0, bounds.maxX, 0, '#64748b', 2.5, 10);
+            drawArrow(0, bounds.minY, 0, bounds.maxY, '#64748b', 2.5, 10);
+
+            const xLabelPos = worldToScreen(bounds.maxX - 0.25, -0.35);
+            const yLabelPos = worldToScreen(-0.35, bounds.maxY - 0.25);
+            ctx.fillStyle = '#f8fafc';
+            ctx.font = 'bold 15px Inter';
+            ctx.fillText('X', xLabelPos.x, xLabelPos.y);
+            ctx.fillText('Y', yLabelPos.x, yLabelPos.y);
+
+            ctx.restore();
+        }
+
+        // Main Render Function
+        function draw() {
+            drawGrid();
+
+            const rad = (state.thetaDeg * Math.PI) / 180;
+
+            if (state.mode === 'rigid') {
+                let currentThetaRad = rad;
+                let currentTx = state.tx;
+                let currentTy = state.ty;
+
+                if (state.animating) {
+                    if (state.animMode === 'step1') {
+                        currentThetaRad = rad * state.animProgress;
+                        currentTx = 0; currentTy = 0;
+                    } else if (state.animMode === 'step2') {
+                        currentThetaRad = rad;
+                        currentTx = state.tx * state.animProgress;
+                        currentTy = state.ty * state.animProgress;
+                    } else {
+                        if (state.animProgress <= 0.5) {
+                            const t = state.animProgress / 0.5;
+                            currentThetaRad = rad * t;
+                            currentTx = 0; currentTy = 0;
+                        } else {
+                            const t = (state.animProgress - 0.5) / 0.5;
+                            currentThetaRad = rad;
+                            currentTx = state.tx * t;
+                            currentTy = state.ty * t;
+                        }
+                    }
+                }
+
+                // 1. Frame A (Origin)
+                drawRobot(0, 0, 0, 'gray', 0.85);
+                drawAxesFrame(0, 0, 0, 'X_A', 'Y_A', 0.85);
+
+                const pA = worldToScreen(0, -0.45);
+                ctx.fillStyle = '#cbd5e1';
+                ctx.font = 'bold 12px Inter';
+                ctx.textAlign = 'center';
+                ctx.fillText('(0,0) Frame A (Origin)', pA.x, pA.y);
+
+                // 2. Intermediate Frame A'
+                drawRobot(0, 0, rad, 'blue', 0.95);
+                drawAxesFrame(0, 0, rad, "X_A'", "Y_A'", 1.0);
+
+                // Angle Arcs
+                if (state.showAngleArcs && Math.abs(state.thetaDeg) > 0.5) {
+                    ctx.save();
+                    const origin = worldToScreen(0, 0);
+                    const arcRadiusX = 55 * window.devicePixelRatio;
+                    const arcRadiusY = 45 * window.devicePixelRatio;
+
+                    ctx.strokeStyle = '#0284c7';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.arc(origin.x, origin.y, arcRadiusX, 0, -rad, state.thetaDeg > 0);
+                    ctx.stroke();
+
+                    ctx.beginPath();
+                    ctx.arc(origin.x, origin.y, arcRadiusY, -Math.PI / 2, -Math.PI / 2 - rad, state.thetaDeg > 0);
+                    ctx.stroke();
+
+                    ctx.fillStyle = '#0284c7';
+                    ctx.font = 'bold 12px Fira Code';
+                    ctx.textAlign = 'center';
+
+                    const lx = origin.x + (arcRadiusX + 18) * Math.cos(-rad / 2);
+                    const ly = origin.y + (arcRadiusX + 18) * Math.sin(-rad / 2);
+                    ctx.fillText(`θ = ${state.thetaDeg}°`, lx, ly);
+
+                    const ly2X = origin.x + (arcRadiusY + 18) * Math.cos(-Math.PI / 2 - rad / 2);
+                    const ly2Y = origin.y + (arcRadiusY + 18) * Math.sin(-Math.PI / 2 - rad / 2);
+                    ctx.fillText(`θ = ${state.thetaDeg}°`, ly2X, ly2Y);
+
+                    ctx.restore();
+                }
+
+                drawLeaderCallout({ x: 0.35, y: 0.35 }, { x: 0.8, y: 1.6 }, "Intermediate Frame A'", true, '#0284c7');
+
+                if (state.showCallouts) {
+                    const pRot = worldToScreen(1.0, -0.4);
+                    ctx.fillStyle = '#0284c7';
+                    ctx.font = 'bold 13px Inter';
+                    ctx.fillText('1. ROTATION (R)', pRot.x, pRot.y);
+                }
+
+                // Curved Path Arc
+                if (state.showVectors && (currentTx !== 0 || currentTy !== 0)) {
+                    ctx.save();
+                    ctx.strokeStyle = '#64748b';
+                    ctx.lineWidth = 2;
+                    ctx.setLineDash([5, 5]);
+
+                    const pStart = worldToScreen(0, 1.0);
+                    const pEnd = worldToScreen(currentTx, currentTy);
+
+                    ctx.beginPath();
+                    ctx.moveTo(pStart.x, pStart.y);
+                    ctx.quadraticCurveTo(pStart.x + (pEnd.x - pStart.x) * 0.5, pStart.y + 30, pEnd.x, pEnd.y);
+                    ctx.stroke();
+
+                    ctx.setLineDash([]);
+                    ctx.restore();
+
+                    drawLeaderCallout({ x: currentTx * 0.7, y: 0.8 }, { x: currentTx * 0.8, y: -0.1 }, "Robot Movement Path", false, '#64748b');
+                }
+
+                // Vector t Arrow
+                if (state.showVectors && (currentTx !== 0 || currentTy !== 0)) {
+                    drawArrow(0, 0, currentTx, currentTy, '#f59e0b', 4.5, 14);
+
+                    const pVecMid = worldToScreen(currentTx * 0.5, currentTy * 0.5);
+                    ctx.fillStyle = '#f59e0b';
+                    ctx.font = 'bold 13px Inter';
+                    ctx.fillText(`t = [t_x, t_y]`, pVecMid.x + 12, pVecMid.y - 12);
+
+                    const dist = Math.sqrt(state.tx * state.tx + state.ty * state.ty);
+                    const bracketText = `√(${state.tx.toFixed(1)}² + ${state.ty.toFixed(1)}²) ≈ ${dist.toFixed(1)}`;
+                    drawDistanceBracket(0, 0, currentTx, currentTy, bracketText);
+                }
+
+                // 3. Final Frame B Target
+                drawRobot(currentTx, currentTy, currentThetaRad, 'amber', 1.0);
+                drawAxesFrame(currentTx, currentTy, currentThetaRad, "X_B", "Y_B", 1.0);
+
+                const pB = worldToScreen(currentTx, currentTy + 0.85);
+                ctx.fillStyle = '#f59e0b';
+                ctx.font = 'bold 13px Inter';
+                ctx.textAlign = 'center';
+                ctx.fillText(`Frame B (X_B, Y_B)`, pB.x, pB.y);
+                ctx.fillText(`(${currentTx.toFixed(1)}, ${currentTy.toFixed(1)})`, pB.x, pB.y + 16);
+
+            } else { // Unicycle Kinematics Continuous Mode
+                // Path Trail
+                if (state.trail.length > 1) {
+                    ctx.save();
+                    ctx.strokeStyle = '#10b981';
+                    ctx.lineWidth = 3;
+                    ctx.beginPath();
+                    const p0 = worldToScreen(state.trail[0].x, state.trail[0].y);
+                    ctx.moveTo(p0.x, p0.y);
+
+                    for (let i = 1; i < state.trail.length; i++) {
+                        const pt = worldToScreen(state.trail[i].x, state.trail[i].y);
+                        ctx.lineTo(pt.x, pt.y);
+                    }
+                    ctx.stroke();
+                    ctx.restore();
+                }
+
+                drawRobot(0, 0, 0, 'gray', 0.5);
+
+                // Active Kinematic Robot
+                drawRobot(state.unicyclePose.x, state.unicyclePose.y, state.unicyclePose.theta, 'emerald', 1.0);
+                drawAxesFrame(state.unicyclePose.x, state.unicyclePose.y, state.unicyclePose.theta, "X_R", "Y_R", 1.0);
+            }
+        }
+
+        // Live Math & Matrix Updates
+        function updateMath() {
+            let rad, tx, ty, dist;
+
+            if (state.mode === 'rigid') {
+                rad = (state.thetaDeg * Math.PI) / 180;
+                tx = state.tx;
+                ty = state.ty;
+                dist = Math.sqrt(tx * tx + ty * ty);
+            } else {
+                rad = state.unicyclePose.theta;
+                tx = state.unicyclePose.x;
+                ty = state.unicyclePose.y;
+                dist = Math.sqrt(tx * tx + ty * ty);
+            }
+
+            const L = state.wheelbase;
+            const vL = (state.v - (state.omega * L) / 2).toFixed(2);
+            const vR = (state.v + (state.omega * L) / 2).toFixed(2);
+
+            document.getElementById('hud-pos').textContent = `(${tx.toFixed(1)}, ${ty.toFixed(1)})`;
+            document.getElementById('hud-theta').textContent = `${((rad * 180) / Math.PI).toFixed(1)}°`;
+            document.getElementById('hud-dist').textContent = `${dist.toFixed(2)} u`;
+            document.getElementById('hud-wheels').textContent = `${vL} / ${vR}`;
+
+            const cos = Math.cos(rad).toFixed(3);
+            const sin = Math.sin(rad).toFixed(3);
+            const negSin = (-Math.sin(rad)).toFixed(3);
+            const txStr = tx.toFixed(1);
+            const tyStr = ty.toFixed(1);
+
+            const matrixLatex = `$$\\mathbf{T}_A^B = \\begin{bmatrix} ${cos} & ${negSin} & ${txStr} \\\\ ${sin} & ${cos} & ${tyStr} \\\\ 0 & 0 & 1 \\end{bmatrix}$$`;
+            const pointTransformLatex = `$$\\mathbf{p}_A = \\mathbf{T}_A^B \\cdot \\mathbf{p}_B = \\begin{bmatrix} ${cos} & ${negSin} & ${txStr} \\\\ ${sin} & ${cos} & ${tyStr} \\\\ 0 & 0 & 1 \\end{bmatrix} \\begin{bmatrix} 0 \\\\ 0 \\\\ 1 \\end{bmatrix} = \\begin{bmatrix} ${txStr} \\\\ ${tyStr} \\\\ 1 \\end{bmatrix}$$`;
+
+            document.getElementById('matrix-latex').innerHTML = matrixLatex;
+            document.getElementById('point-transform-latex').innerHTML = pointTransformLatex;
+
+            if (window.MathJax && window.MathJax.typesetPromise) {
+                window.MathJax.typesetPromise([
+                    document.getElementById('matrix-latex'),
+                    document.getElementById('point-transform-latex')
+                ]);
+            }
+        }
+
+        function syncControls() {
+            sliderTheta.value = state.thetaDeg;
+            numTheta.value = state.thetaDeg;
+
+            sliderTx.value = state.tx;
+            numTx.value = state.tx.toFixed(1);
+
+            sliderTy.value = state.ty;
+            numTy.value = state.ty.toFixed(1);
+
+            sliderV.value = state.v;
+            labelV.textContent = `${state.v.toFixed(2)} u/s`;
+
+            sliderOmega.value = state.omega;
+            labelOmega.textContent = `${state.omega.toFixed(2)} rad/s`;
+
+            numRadius.value = state.wheelRadius;
+            numWheelbase.value = state.wheelbase;
+
+            updateMath();
+            draw();
+        }
+
+        // Direct Dragging Interaction on Canvas
+        function getCanvasMousePos(e) {
+            const rect = canvas.getBoundingClientRect();
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            const sx = (clientX - rect.left) * window.devicePixelRatio;
+            const sy = (clientY - rect.top) * window.devicePixelRatio;
+            return screenToWorld(sx, sy);
+        }
+
+        canvas.addEventListener('mousedown', (e) => {
+            if (state.mode !== 'rigid') return;
+            const worldPos = getCanvasMousePos(e);
+            const dist = Math.sqrt((worldPos.x - state.tx) ** 2 + (worldPos.y - state.ty) ** 2);
+
+            if (dist < 0.8) {
+                state.isDragging = true;
+            }
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            if (!state.isDragging || state.mode !== 'rigid') return;
+            const worldPos = getCanvasMousePos(e);
+            state.tx = Math.max(-1, Math.min(5, worldPos.x));
+            state.ty = Math.max(-1, Math.min(5, worldPos.y));
+            syncControls();
+        });
+
+        window.addEventListener('mouseup', () => { state.isDragging = false; });
+
+        canvas.addEventListener('touchstart', (e) => {
+            if (state.mode !== 'rigid') return;
+            const worldPos = getCanvasMousePos(e);
+            const dist = Math.sqrt((worldPos.x - state.tx) ** 2 + (worldPos.y - state.ty) ** 2);
+            if (dist < 0.8) state.isDragging = true;
+        });
+
+        window.addEventListener('touchmove', (e) => {
+            if (!state.isDragging || state.mode !== 'rigid') return;
+            const worldPos = getCanvasMousePos(e);
+            state.tx = Math.max(-1, Math.min(5, worldPos.x));
+            state.ty = Math.max(-1, Math.min(5, worldPos.y));
+            syncControls();
+        });
+
+        window.addEventListener('touchend', () => { state.isDragging = false; });
+
+        // Event Listeners for Input Controls
+        sliderTheta.addEventListener('input', (e) => { state.thetaDeg = parseFloat(e.target.value); syncControls(); });
+        numTheta.addEventListener('input', (e) => { state.thetaDeg = parseFloat(e.target.value) || 0; syncControls(); });
+
+        sliderTx.addEventListener('input', (e) => { state.tx = parseFloat(e.target.value); syncControls(); });
+        numTx.addEventListener('input', (e) => { state.tx = parseFloat(e.target.value) || 0; syncControls(); });
+
+        sliderTy.addEventListener('input', (e) => { state.ty = parseFloat(e.target.value); syncControls(); });
+        numTy.addEventListener('input', (e) => { state.ty = parseFloat(e.target.value) || 0; syncControls(); });
+
+        sliderV.addEventListener('input', (e) => { state.v = parseFloat(e.target.value); syncControls(); });
+        sliderOmega.addEventListener('input', (e) => { state.omega = parseFloat(e.target.value); syncControls(); });
+
+        numRadius.addEventListener('input', (e) => { state.wheelRadius = parseFloat(e.target.value) || 0.15; syncControls(); });
+        numWheelbase.addEventListener('input', (e) => { state.wheelbase = parseFloat(e.target.value) || 0.50; syncControls(); });
+
+        toggleAngleArcs.addEventListener('change', (e) => { state.showAngleArcs = e.target.checked; draw(); });
+        toggleBracket.addEventListener('change', (e) => { state.showBracket = e.target.checked; draw(); });
+        toggleVectors.addEventListener('change', (e) => { state.showVectors = e.target.checked; draw(); });
+        toggleCallouts.addEventListener('change', (e) => { state.showCallouts = e.target.checked; draw(); });
+        toggleFrames.addEventListener('change', (e) => { state.showFrames = e.target.checked; draw(); });
+
+        toggleMatrix.addEventListener('change', (e) => {
+            state.showMatrix = e.target.checked;
+            document.getElementById('math-panel-wrapper').style.display = e.target.checked ? 'flex' : 'none';
+        });
+
+        // Mode Switching
+        modeRigidBtn.addEventListener('click', () => {
+            state.mode = 'rigid';
+            state.animating = false;
+            modeRigidBtn.classList.add('active');
+            modeUnicycleBtn.classList.remove('active');
+            document.getElementById('controls-rigid').classList.remove('hidden');
+            document.getElementById('controls-unicycle').classList.add('hidden');
+            document.getElementById('kinematics-eqs-container').classList.add('hidden');
+            document.getElementById('active-mode-badge').textContent = 'Rigid Body SE(2)';
+            document.getElementById('drag-hint').classList.remove('hidden');
+            syncControls();
+        });
+
+        modeUnicycleBtn.addEventListener('click', () => {
+            state.mode = 'unicycle';
+            state.animating = false;
+            state.unicyclePose = { x: 0, y: 0, theta: 0 };
+            state.trail = [{ x: 0, y: 0 }];
+            modeUnicycleBtn.classList.add('active');
+            modeRigidBtn.classList.remove('active');
+            document.getElementById('controls-rigid').classList.add('hidden');
+            document.getElementById('controls-unicycle').classList.remove('hidden');
+            document.getElementById('kinematics-eqs-container').classList.remove('hidden');
+            document.getElementById('active-mode-badge').textContent = 'Differential Drive';
+            document.getElementById('drag-hint').classList.add('hidden');
+            syncControls();
+        });
+
+        // Sequential Animation Loop
+        function animateLoop(timestamp) {
+            if (!state.animating || state.mode !== 'rigid') return;
+
+            if (!state.animStartTime) state.animStartTime = timestamp;
+            const elapsed = timestamp - state.animStartTime;
+            state.animProgress = Math.min(1.0, elapsed / state.duration);
+
+            draw();
+
+            if (state.animProgress < 1.0) {
+                requestAnimationFrame(animateLoop);
+            } else {
+                state.animating = false;
+                document.getElementById('play-text').textContent = 'Play Full Sequence';
+                document.getElementById('play-icon').setAttribute('data-lucide', 'play');
+                lucide.createIcons();
+            }
+        }
+
+        // Unicycle Numerical Integration Loop
+        let lastTime = 0;
+        function animateUnicycle(timestamp) {
+            if (!state.animating || state.mode !== 'unicycle') return;
+
+            if (!lastTime) lastTime = timestamp;
+            const dt = (timestamp - lastTime) / 1000;
+            lastTime = timestamp;
+
+            state.unicyclePose.x += state.v * Math.cos(state.unicyclePose.theta) * dt;
+            state.unicyclePose.y += state.v * Math.sin(state.unicyclePose.theta) * dt;
+            state.unicyclePose.theta += state.omega * dt;
+
+            state.trail.push({ x: state.unicyclePose.x, y: state.unicyclePose.y });
+            if (state.trail.length > 600) state.trail.shift();
+
+            updateMath();
+            draw();
+
+            requestAnimationFrame(animateUnicycle);
+        }
+
+        function startAnimation(mode) {
+            state.animating = true;
+            state.animMode = mode;
+            state.animProgress = 0;
+            state.animStartTime = 0;
+            document.getElementById('play-text').textContent = 'Pause';
+            document.getElementById('play-icon').setAttribute('data-lucide', 'pause');
+            lucide.createIcons();
+
+            if (state.mode === 'rigid') {
+                requestAnimationFrame(animateLoop);
+            } else {
+                lastTime = 0;
+                requestAnimationFrame(animateUnicycle);
+            }
+        }
+
+        btnAnimate.addEventListener('click', () => {
+            if (state.animating) {
+                state.animating = false;
+                document.getElementById('play-text').textContent = 'Play Full Sequence';
+                document.getElementById('play-icon').setAttribute('data-lucide', 'play');
+                lucide.createIcons();
+                draw();
+            } else {
+                startAnimation('full');
+            }
+        });
+
+        btnRotateOnly.addEventListener('click', () => startAnimation('step1'));
+        btnTranslateOnly.addEventListener('click', () => startAnimation('step2'));
+
+        btnDrive.addEventListener('click', () => {
+            if (state.mode !== 'unicycle') return;
+            state.animating = !state.animating;
+            if (state.animating) {
+                lastTime = 0;
+                requestAnimationFrame(animateUnicycle);
+            }
+        });
+
+        btnReset.addEventListener('click', () => {
+            state.thetaDeg = 45;
+            state.tx = 4.0;
+            state.ty = 3.0;
+            state.v = 1.5;
+            state.omega = 0.5;
+            state.animating = false;
+            state.unicyclePose = { x: 0, y: 0, theta: 0 };
+            state.trail = [];
+            syncControls();
+        });
+
+        window.onload = () => {
+            lucide.createIcons();
+            resizeCanvas();
+            syncControls();
+        };
+    </script>
+</body>
+</html>
